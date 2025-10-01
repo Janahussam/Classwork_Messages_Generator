@@ -56,14 +56,6 @@
         <div id="rephrased-output" class="mt-8 p-6 bg-blue-50 border border-blue-300 rounded-lg shadow-inner hidden">
             <h2 class="text-xl font-semibold text-blue-700 mb-3">After generation</h2>
             <p id="rephrased-text" class="text-blue-900 leading-relaxed whitespace-pre-line"></p>
-
-            <!-- زرار الكوبي -->
-            <button
-                id="copyButton"
-                class="mt-4 py-2 px-4 bg-green-500 text-white font-medium rounded-lg shadow hover:bg-green-600 transition hidden"
-            >
-                Copy Feedback
-            </button>
         </div>
     </div>
 
@@ -78,7 +70,6 @@
         const rephrasedText = document.getElementById('rephrased-text');
         const errorMessage = document.getElementById('error-message');
         const errorText = document.getElementById('error-text');
-        const copyButton = document.getElementById('copyButton');
 
         rephraseButton.addEventListener('click', async () => {
             const classWork = classWorkInput.value.trim();
@@ -133,7 +124,6 @@ ${assistantName}`;
                     
                     rephrasedOutput.classList.remove('hidden');
                     rephrasedText.textContent = finalMessage;
-                    copyButton.classList.remove('hidden');
                 } else {
                     errorMessage.classList.remove('hidden');
                     errorText.textContent = 'Server communication error. Please try again.';
@@ -145,14 +135,6 @@ ${assistantName}`;
                 rephraseButton.disabled = false;
                 rephraseButton.textContent = 'Generate another message';
             }
-        });
-
-        // زرار الكوبي
-        copyButton.addEventListener('click', () => {
-            navigator.clipboard.writeText(rephrasedText.textContent).then(() => {
-                copyButton.textContent = 'Copied ✅';
-                setTimeout(() => copyButton.textContent = 'Copy Feedback', 2000);
-            });
         });
     });
     </script>
