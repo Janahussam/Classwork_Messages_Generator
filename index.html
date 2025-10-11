@@ -16,12 +16,12 @@
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div>
-                <label for="classWork" class="block text-blue-800 font-medium mb-2">chapter number</label>
-                <input type="number" id="classWork" class="w-full p-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-right" min="1" placeholder="Example: 1">
+                <label for="chapter" class="block text-blue-800 font-medium mb-2">chapter number</label>
+                <input type="number" id="chapter" class="w-full p-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-right" min="1" placeholder="Example: 1">
             </div>
             <div>
-                <label for="chapter" class="block text-blue-800 font-medium mb-2">Homework/Class Number</label>
-                <input type="number" id="chapter" class="w-full p-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-right" min="1" placeholder="Example: 5">
+                <label for="classWork" class="block text-blue-800 font-medium mb-2">Homework/Class Number</label>
+                <input type="number" id="classWork" class="w-full p-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-right" min="1" placeholder="Example: 5">
             </div>
         </div>
 
@@ -89,7 +89,9 @@
             errorMessage.classList.add('hidden');
             rephrasedOutput.classList.add('hidden');
 
-            const prompt = `أنت مساعد تدريس ممتاز ومحفز. مهمتك هي تحويل أي ملاحظة سلبية إلى رسالة إيجابية ومحفزة جداً للطلاب بالعامية المصرية. اجعل الرسالة قصيرة، وودية، واختمها بـ "❤️".
+            const prompt = `أنت مساعد تدريس لمادة الكيميستري. مهمتك تحويل أي ملاحظة سلبية إلى رسالة تشجيعية بسيطة وودية بالعامية المصرية. 
+خلي الكلام هادي من غير مبالغة في العاطفة (من غير يا بطلة أو قلوب كتير)، يكفي يكون فيه تشجيع بسيط زي "برافو عليك 👏". 
+اجعل الرسالة قصيرة، ودية، وبنهاية مشجعة عادية.
 
 الملاحظة الأصلية هي: ${feedback}
 المخرج: `;
@@ -112,11 +114,12 @@
                     const finalMessage = `
 مكتب دكتور ناصر البطل لمادة ال Chemistry يرحب بكم ❤️
 ———————————————
-الاول طبعًا انا عاوز اشكرك جدًا علي التزامك انك بعت الكلاس ورك والهوم ورك ❤️
+الأول طبعًا حابب أشكرك على التزامك إنك بعت الكلاس ورك والهوم ورك 👏
 
 Class work lesson ( ${classWork} ) chapter ( ${chapter} )
 Homework lesson ( ${classWork} ) chapter ( ${chapter} )
-و حابب اقولك ان الفيدباك علي الفايل بتاعك كان:
+
+و حابب أقولك إن الفيدباك على الفايل بتاعك كان:
 
 ${rephrased.trim()}
 
