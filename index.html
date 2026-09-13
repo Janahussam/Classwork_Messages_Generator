@@ -38,7 +38,15 @@
         </div>
 
         <div id="rephrased-output" class="mt-8 p-6 bg-blue-50 border border-blue-300 rounded-lg shadow-inner hidden">
-            <h2 class="text-xl font-semibold text-blue-700 mb-3">After generation</h2>
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-xl font-semibold text-blue-700">After generation</h2>
+                <button
+                    id="copyButton"
+                    class="py-1.5 px-4 bg-blue-600 text-white text-sm font-medium rounded-lg shadow-sm hover:bg-blue-700 transition duration-200"
+                >
+                    Copy
+                </button>
+            </div>
             <p id="rephrased-text" class="text-blue-900 leading-relaxed whitespace-pre-line"></p>
         </div>
     </div>
@@ -51,6 +59,23 @@
         const rephrasedText = document.getElementById('rephrased-text');
         const errorMessage = document.getElementById('error-message');
         const errorText = document.getElementById('error-text');
+        const copyButton = document.getElementById('copyButton');
+
+        copyButton.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(rephrasedText.textContent);
+                const originalLabel = copyButton.textContent;
+                copyButton.textContent = 'Copied!';
+                setTimeout(() => {
+                    copyButton.textContent = originalLabel;
+                }, 1500);
+            } catch (e) {
+                copyButton.textContent = 'Copy failed';
+                setTimeout(() => {
+                    copyButton.textContent = 'Copy';
+                }, 1500);
+            }
+        });
 
         // Replace this line with your Cloudflare Worker URL after creating it
         const WORKER_URL = 'https://plain-math-2511.janahussam3.workers.dev';
