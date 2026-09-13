@@ -71,6 +71,9 @@
         const errorMessage = document.getElementById('error-message');
         const errorText = document.getElementById('error-text');
 
+        // Replace this line with your Cloudflare Worker URL after creating it
+        const WORKER_URL = 'https://plain-math-2511.janahussam3.workers.dev';
+
         rephraseButton.addEventListener('click', async () => {
             const chapter = chapterInput.value.trim();
             const classWork = classWorkInput.value.trim();
@@ -90,7 +93,7 @@
             rephrasedOutput.classList.add('hidden');
 
             const prompt = `أنت مساعد تدريس لمادة الكيميستري. مهمتك تحويل أي ملاحظة سلبية إلى رسالة تشجيعية بسيطة وودية بالعامية المصرية. 
-خلي الكلام هادي من غير مبالغة في العاطفة (من غير يا بطلة أو قلوب كتير)، يكفي يكون فيه تشجيع بسيط زي "برافو عليك 👏". 
+خلي الكلام هادي من غير مبالغة في العاطفة (من غير يا بطلة أو قلوب كتير)، يكفي يكون فيه تشجيع بسيط زي "برافو عليك". 
 اجعل الرسالة قصيرة، ودية، وبنهاية مشجعة عادية.
 
 الملاحظة الأصلية هي: ${feedback}
@@ -101,7 +104,7 @@
                     contents: [{ parts: [{ text: prompt }] }]
                 };
 
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=AQ.Ab8RN6Ig-wFXqe-KKVZl4dJ7A1GhZo8i_7JxOiNWvil3TNwyxw`, {
+                const response = await fetch(WORKER_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -112,9 +115,9 @@
                 
                 if (rephrased) {
                     const finalMessage = `
-مكتب دكتور ناصر البطل لمادة ال Chemistry يرحب بكم ❤️
+مكتب دكتور ناصر البطل لمادة ال Chemistry يرحب بكم
 ———————————————
-الأول طبعًا حابب أشكرك على التزامك إنك بعت الكلاس ورك والهوم ورك 👏
+الأول طبعًا حابب أشكرك على التزامك إنك بعت الكلاس ورك والهوم ورك
 
 Class work lesson ( ${classWork} ) chapter ( ${chapter} )
 Homework lesson ( ${classWork} ) chapter ( ${chapter} )
@@ -123,7 +126,7 @@ Homework lesson ( ${classWork} ) chapter ( ${chapter} )
 
 ${rephrased.trim()}
 
-مبسوطين جدًا إنك بتحاول يا بطل احنا معاك وهدفنا نساعدك دايمًا إنه يكون فيه تطور ❤️
+مبسوطين جدًا إنك بتحاول يا بطل احنا معاك وهدفنا نساعدك دايمًا إنه يكون فيه تطور
 
 ${assistantName}`;
                     
@@ -131,7 +134,7 @@ ${assistantName}`;
                     rephrasedText.textContent = finalMessage;
                 } else {
                     errorMessage.classList.remove('hidden');
-                    errorText.textContent = 'Please try again Later. Eng.Jana working on it now';
+                    errorText.textContent = 'Please try again. Eng.Jana is upgrading it now';
                 }
             } catch (e) {
                 errorMessage.classList.remove('hidden');
