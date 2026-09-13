@@ -65,7 +65,7 @@
             try {
                 await navigator.clipboard.writeText(rephrasedText.textContent);
                 const originalLabel = copyButton.textContent;
-                copyButton.textContent = 'Copied!';
+                copyButton.textContent = 'Copied';
                 setTimeout(() => {
                     copyButton.textContent = originalLabel;
                 }, 1500);
