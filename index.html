@@ -240,7 +240,7 @@
 قواعد الرسالة:
 1. كل نقطة في الملاحظة لازم تظهر في الرسالة بنفس معناها بالظبط، من غير ما تحذف نقطة أو تدمج نقطتين لحد ما واحدة تضيع، ومن غير ما تضيف مشكلة أو مدح مش موجودين. لو في رقم أو كمية (زي "سؤالين تلاتة") وضّحه.
 2. المدح للنقط الـ positive بس، ويكون مدح محدد للحاجة نفسها. ممنوع تقول "كملي كده" أو "استمر" أو تمدح بعد نقطة needs_work مباشرة كأنها حاجة كويسة.
-3. كل نقطة needs_work تتقال بوضوح وبشكل بناء: إيه المطلوب يتعمل بالظبط، ومعاه سبب قصير مقنع (جملة واحدة) ليه ده مهم. خد السبب من المرجع تحت لو مناسب، بكلامك وباختصار، ومتنقلش المرجع.
+3. أهم قاعدة: ممنوع تتجاهل أي نقطة needs_work أو تكتفي بالمدح. بعد التشجيع مباشرة لازم تقول كل نقطة needs_work بالاسم (مثلاً "بس محتاج تكتب Notes Hero or Zero")، وبعدها على طول نصيحة عملية: إيه المطلوب يتعمل بالظبط، ومعاها سبب مقنع (جملة أو اتنين) ليه ده مهم وهيفرق معاه في إيه. اكتب النصيحة في حقل advice للنقطة، ولازم نفس النصيحة تظهر جوه الرسالة. خد السبب من المرجع تحت لو مناسب، بكلامك وباختصار، ومتنقلش المرجع.
 4. حافظ على المصطلحات واكتبها بالشكل المعتمد: Class Work، Notes، Notes Hero or Zero، Model Answer، Revision، Approach، المقالي، الاختياري، الواجب. ممنوع تبدلها بكلمة عامة زي "الشغل" أو "المذاكرة"، وممنوع تذكر جزء مش مذكور في الملاحظة. "Class Work" دايماً مفرد.
 5. ممنوع أي حكم سلبي على الطالب أو شغله (وحش، مهمل، كسلان، عشوائي، مبهدل، مش مرتب...)، حتى لو مكتوب في الملاحظة. حوّله لوصف للي محتاج يتعمل.
 6. ابدأ على طول من غير ترحيب. لو في نقطة positive ابدأ بمدحها تحديداً. لو مفيش ولا نقطة positive، متمدحش حاجة مش موجودة، وابدأ بتقدير اهتمامه إنه بعت الـ Class Work.
@@ -256,14 +256,20 @@ ${examplesBlock}
 ${CLASSWORK_GUIDE}
 ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المشكلة دي: ${correction}. اكتب الرسالة تاني وتجنبها.\n` : ''}
 رجّع JSON بس بالشكل ده من غير أي كلام تاني:
-{"gender": "female أو male", "points": [{"text": "النقطة", "type": "positive أو needs_work"}], "message": "الرسالة النهائية"}
+{"gender": "female أو male", "points": [{"text": "النقطة", "type": "positive أو needs_work", "advice": "النصيحة والسبب (للـ needs_work بس، وفاضي للـ positive)"}], "message": "الرسالة النهائية"}
 
 الملاحظة: ${feedback}`;
         }
 
         // ---------- Model call ----------
 
-        function extractMessage(rawText) {
+        const STOP_WORDS = new Set([
+            'مش', 'انت', 'انتي', 'في', 'على', 'علي', 'من', 'عن', 'بس', 'كل', 'كله', 'كمان', 'هو', 'هي',
+            'اللي', 'ده', 'دي', 'مع', 'او', 'لو', 'ما', 'لا', 'كاتب', 'كاتبه', 'محتاج', 'محتاجه', 'الطالب'
+        ]);
+
+        // Returns null when the response is missing or was cut off mid-generation.
+        function parseResponse(rawText) {
             const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
             const candidates = [cleaned, (cleaned.match(/\{[\s\S]*\}/) || [])[0]].filter(Boolean);
 
@@ -271,21 +277,42 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
                 try {
                     const data = JSON.parse(candidate);
                     if (data && typeof data.message === 'string' && data.message.trim()) {
-                        return data.message.trim();
+                        return {
+                            message: data.message.trim(),
+                            points: Array.isArray(data.points) ? data.points : []
+                        };
                     }
                 } catch (e) {
                     // Fall through to the next candidate.
                 }
             }
-            return cleaned.startsWith('{') ? '' : cleaned;
+
+            if (!cleaned || cleaned.startsWith('{')) return null;
+            return { message: cleaned, points: [] };
         }
 
-        function findIssue(message) {
+        function keywords(text) {
+            return [...tokenize(text)].filter((t) => t.length > 2 && !STOP_WORDS.has(t));
+        }
+
+        function findIssue(message, points = []) {
             if (/^\s*[-•*]/m.test(message)) return 'في سطر بادئ بشرطة أو نقطة';
             if (/كلاسوركات|class works/i.test(message)) return 'كلمة Class Work اتجمعت';
+
             const normalized = normalizeArabic(message);
             const hit = BANNED_WORDS.find((w) => normalized.includes(normalizeArabic(w)));
             if (hit) return `استخدمت كلمة فيها حكم سلبي ("${hit}")`;
+
+            const pending = points.filter((p) => p && p.type === 'needs_work' && typeof p.text === 'string');
+            for (const point of pending) {
+                const words = keywords(point.text);
+                if (words.length && !words.some((w) => normalized.includes(w))) {
+                    return `الرسالة مذكرتش النقطة اللي محتاجة تتحسن: "${point.text}"`;
+                }
+            }
+            if (pending.length && !/(لان|عشان|علشان|هيساعد|هيفرق|هتفرق|مهم|هتفهم|هيخليك|هيخليكي)/.test(normalized)) {
+                return 'الرسالة مفيهاش نصيحة أو سبب للنقطة اللي محتاجة تتحسن';
+            }
             return '';
         }
 
@@ -299,6 +326,7 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
                     generationConfig: {
                         temperature: 0.8,
                         topP: 0.95,
+                        maxOutputTokens: 4096,
                         responseMimeType: 'application/json'
                     }
                 })
@@ -309,16 +337,21 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
             }
 
             const result = await response.json();
-            const text = result?.candidates?.[0]?.content?.parts
+            const candidate = result?.candidates?.[0];
+            const text = candidate?.content?.parts
                 ?.filter((p) => !p.thought)
                 .map((p) => p.text || '')
                 .join('') || '';
 
-            const message = extractMessage(text);
-            if (!message) {
-                throw new Error(`${model} returned an empty response`);
+            if (candidate?.finishReason === 'MAX_TOKENS') {
+                throw new Error(`${model} response was truncated`);
             }
-            return message;
+
+            const parsed = parseResponse(text);
+            if (!parsed) {
+                throw new Error(`${model} returned an empty or incomplete response`);
+            }
+            return parsed;
         }
 
         // Walks the model list from `startIndex` until one answers.
@@ -326,8 +359,8 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
             let lastError;
             for (let i = startIndex; i < MODELS.length; i += 1) {
                 try {
-                    const message = await callModel(MODELS[i], prompt);
-                    return { message, modelIndex: i };
+                    const { message, points } = await callModel(MODELS[i], prompt);
+                    return { message, points, modelIndex: i };
                 } catch (e) {
                     lastError = e;
                     console.warn(e.message);
@@ -340,13 +373,18 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
             const examples = pickExamples(feedback);
             let result = await requestMessage(buildPrompt(feedback, examples));
 
-            const issue = findIssue(result.message);
-            if (issue) {
+            let issue = findIssue(result.message, result.points);
+            for (let attempt = 0; issue && attempt < 2; attempt += 1) {
                 try {
                     const retry = await requestMessage(buildPrompt(feedback, examples, issue), result.modelIndex);
-                    if (!findIssue(retry.message)) result = retry;
+                    const retryIssue = findIssue(retry.message, retry.points);
+                    if (!retryIssue) {
+                        result = retry;
+                        break;
+                    }
+                    issue = retryIssue;
                 } catch (e) {
-                    // Keep the first answer if the retry cannot be completed.
+                    break;
                 }
             }
             return { message: result.message, model: MODELS[result.modelIndex] };
