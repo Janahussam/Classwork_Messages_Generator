@@ -62,7 +62,7 @@
                         class="w-full h-24 p-3 text-sm border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-y text-right bg-white"
                         placeholder="Correct the message, then save so the model learns from the difference."
                     ></textarea>
-                    <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <div class="mt-2 flex items-center gap-3 text-sm">
                         <button
                             id="saveExampleButton"
                             class="py-1.5 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition duration-200 disabled:bg-blue-300"
@@ -70,22 +70,7 @@
                             Save correction
                         </button>
                         <span id="teachStatus" class="text-blue-700"></span>
-                        <span class="text-blue-500">
-                            <span id="exampleCount">0</span> corrections ·
-                            <button id="exportButton" class="underline hover:text-blue-700">Export</button> ·
-                            <label class="underline hover:text-blue-700 cursor-pointer">
-                                Import
-                                <input id="importInput" type="file" accept="application/json,.json" class="hidden">
-                            </label>
-                        </span>
                     </div>
-
-                    <details class="mt-3 text-sm">
-                        <summary class="cursor-pointer text-blue-700 select-none">
-                            Rules (<span id="ruleCount">0</span>)
-                        </summary>
-                        <ul id="ruleList" class="mt-2 space-y-1 max-h-48 overflow-y-auto"></ul>
-                    </details>
                 </div>
             </div>
         </div>
@@ -198,11 +183,6 @@ Notes Hero or Zero بتكتبها في الأول علشان تكتسب ترتي
         const expectedText = el('expectedText');
         const saveExampleButton = el('saveExampleButton');
         const teachStatus = el('teachStatus');
-        const exampleCount = el('exampleCount');
-        const ruleCount = el('ruleCount');
-        const ruleList = el('ruleList');
-        const exportButton = el('exportButton');
-        const importInput = el('importInput');
 
         let lastFeedback = '';
         let lastGenerated = '';
@@ -585,57 +565,10 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
             }, duration);
         }
 
-        function renderCounts() {
-            exampleCount.textContent = loadExamples().length;
-            renderRules();
-        }
-
-        function renderRules() {
-            const rules = loadRules();
-            ruleCount.textContent = rules.length;
-            ruleList.innerHTML = '';
-
-            if (!rules.length) {
-                const empty = document.createElement('li');
-                empty.className = 'text-blue-400';
-                empty.textContent = 'No rules yet.';
-                ruleList.appendChild(empty);
-                return;
-            }
-
-            rules.forEach((rule, index) => {
-                const item = document.createElement('li');
-                item.className = 'flex items-start justify-between gap-2 p-2 bg-white border border-blue-100 rounded';
-
-                const text = document.createElement('span');
-                text.className = 'text-blue-900 leading-relaxed';
-                text.textContent = rule.text;
-
-                const tag = document.createElement('span');
-                tag.className = 'shrink-0 text-xs text-blue-400';
-                tag.textContent = rule.source === 'note' ? 'note' : 'learned';
-
-                const remove = document.createElement('button');
-                remove.className = 'shrink-0 text-red-500 hover:text-red-700';
-                remove.textContent = '×';
-                remove.setAttribute('aria-label', 'Delete rule');
-                remove.addEventListener('click', () => {
-                    const current = loadRules();
-                    current.splice(index, 1);
-                    saveRules(current);
-                    renderRules();
-                });
-
-                item.append(text, tag, remove);
-                ruleList.appendChild(item);
-            });
-        }
-
         function setTeachMode(enabled) {
             teachToggle.checked = enabled;
             teachPanel.classList.toggle('hidden', !enabled);
             try { localStorage.setItem(TEACH_KEY, enabled ? '1' : '0'); } catch (e) { /* ignore */ }
-            if (enabled) renderCounts();
         }
 
         // ---------- Events ----------
@@ -656,7 +589,6 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
             if (instructions.length) {
                 const added = addRules(instructions, 'note');
                 inputTextarea.value = feedback;
-                renderRules();
                 flash(inputStatus, added ? 'Rule saved. The model will always follow it.' : 'This rule is already saved.');
             }
 
@@ -718,60 +650,16 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
                 return;
             }
 
-            renderCounts();
             saveExampleButton.disabled = true;
             teachStatus.textContent = 'Learning from your edit...';
 
             try {
                 const added = await learnFromCorrection(lastFeedback, lastGenerated, corrected);
-                renderRules();
                 flash(teachStatus, added ? `Saved. Learned ${added} new rule${added === 1 ? '' : 's'}.` : 'Saved.');
             } catch (e) {
                 flash(teachStatus, 'Saved. Rule extraction failed, the correction is still used.');
             } finally {
                 saveExampleButton.disabled = false;
-            }
-        });
-
-        exportButton.addEventListener('click', () => {
-            const data = { examples: loadExamples(), rules: loadRules() };
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `feedback-memory-${new Date().toISOString().slice(0, 10)}.json`;
-            link.click();
-            URL.revokeObjectURL(url);
-        });
-
-        importInput.addEventListener('change', async () => {
-            const file = importInput.files?.[0];
-            importInput.value = '';
-            if (!file) return;
-
-            try {
-                const incoming = JSON.parse(await file.text());
-                const incomingExamples = Array.isArray(incoming) ? incoming : incoming.examples || [];
-                const incomingRules = Array.isArray(incoming) ? [] : incoming.rules || [];
-
-                const merged = loadExamples();
-                const known = new Set(merged.map((ex) => normalizeArabic(ex.input)));
-                incomingExamples.filter(isValidExample).forEach((ex) => {
-                    const key = normalizeArabic(ex.input);
-                    if (known.has(key)) return;
-                    known.add(key);
-                    merged.push(ex);
-                });
-                saveExamples(merged);
-
-                const validRules = incomingRules.filter(isValidRule);
-                addRules(validRules.filter((r) => r.source === 'note').map((r) => r.text), 'note');
-                addRules(validRules.filter((r) => r.source === 'correction').map((r) => r.text), 'correction');
-
-                renderCounts();
-                flash(teachStatus, 'Imported.');
-            } catch (e) {
-                flash(teachStatus, 'Import failed.');
             }
         });
 
