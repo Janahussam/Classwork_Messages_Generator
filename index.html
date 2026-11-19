@@ -23,6 +23,7 @@
                 class="w-full h-32 p-4 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none text-right"
                 placeholder="Example: الكلاس ورك محلول تمام والنوتس مكتوبه بس مش لكل الاسئله....الواجب محلول صح وبالخطوات بس مش مبعوت كامل"
             ></textarea>
+            <p id="inputStatus" class="mt-2 text-sm text-blue-600 min-h-[1.25rem]"></p>
         </div>
 
         <button
@@ -59,18 +60,18 @@
                     <textarea
                         id="expectedText"
                         class="w-full h-24 p-3 text-sm border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-y text-right bg-white"
-                        placeholder="Edit the message the way it should be, then save."
+                        placeholder="Correct the message, then save so the model learns from the difference."
                     ></textarea>
                     <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm">
                         <button
                             id="saveExampleButton"
-                            class="py-1.5 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition duration-200"
+                            class="py-1.5 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition duration-200 disabled:bg-blue-300"
                         >
-                            Save
+                            Save correction
                         </button>
                         <span id="teachStatus" class="text-blue-700"></span>
                         <span class="text-blue-500">
-                            <span id="exampleCount">0</span> saved ·
+                            <span id="exampleCount">0</span> corrections ·
                             <button id="exportButton" class="underline hover:text-blue-700">Export</button> ·
                             <label class="underline hover:text-blue-700 cursor-pointer">
                                 Import
@@ -78,6 +79,13 @@
                             </label>
                         </span>
                     </div>
+
+                    <details class="mt-3 text-sm">
+                        <summary class="cursor-pointer text-blue-700 select-none">
+                            Rules (<span id="ruleCount">0</span>)
+                        </summary>
+                        <ul id="ruleList" class="mt-2 space-y-1 max-h-48 overflow-y-auto"></ul>
+                    </details>
                 </div>
             </div>
         </div>
@@ -86,9 +94,11 @@
     <script>
     document.addEventListener('DOMContentLoaded', () => {
         const WORKER_URL = 'https://plain-math-2511.janahussam3.workers.dev';
-        const STORAGE_KEY = 'feedbackGenerator.examples.v1';
+        const EXAMPLES_KEY = 'feedbackGenerator.examples.v1';
+        const RULES_KEY = 'feedbackGenerator.rules.v1';
         const TEACH_KEY = 'feedbackGenerator.teachMode';
         const MAX_PROMPT_EXAMPLES = 5;
+        const MAX_LEARNED_RULES = 40;
 
         // Tried in order; the next one is used when a model is out of quota, overloaded, or returns nothing.
         // The last entry is the high-quota workhorse that absorbs the daily volume.
@@ -105,58 +115,58 @@
             }
         ];
 
-        const CLASSWORK_GUIDE = `الـ Class Work مش جزء ممكن نستغنى عنه أو نكتفي فيه بالـ Model Answer، ده من أهم أجزاء الحصة.
-الدكتور في الـ Class Work بيقول Notes مهمة جدًا، وبيشارك Links وأفكار بتسهّل حفظ الحاجات اللي محتاجة حفظ، والأسئلة نفسها أفكارها تقيلة ومستواها عالي، وده اللي محتاجين نشوف الدكتور وهو بيفكر فيه ويحله.
-حتى لو الطالب حل السؤال صح، لازم يشوف الحل عشان يعرف: هل فكر بنفس طريقة الدكتور؟ هل استخدم الـ Approach الصح؟ هل في طريقة أسرع أو أذكى؟ هل في Note الدكتور ركز عليها وفاتته؟
-الـ Class Work بنبني فيه طريقة تفكيرنا في الأسئلة، خصوصًا الأسئلة الـ High Level.
-الفرق بين إنك تعرف تحل السؤال وإنك تكون فاهمه فعلًا بيكون في الـ Approach وطريقة التفكير.
-مينفعش نعتبر إن الحصة خلصت من غير الـ Class Work، لازم نشوفه للآخر ونستفيد من كل Note وكل طريقة حل.
-كتابة Notes Hero or Zero قبل الـ Class Work مهمة للفهم وللـ Revision.
-لو في سؤال اتحل غلط: يرجع لفيديو حل الدكتور يفهم سبب الغلطة، وبعدين يحل نفس السؤال تاني بنفسه من غير ما يبص على الحل.`;
+        const CLASSWORK_GUIDE = `نظام الـ Class Work: أول جزء فيه اسمه Notes Hero or Zero، ودي Notes بتكتبها علشان تكتسب ترتيب خطوات الحل. بعدها في كل سؤال: بتقرا السؤال وتفكر فيه وتحاول تحله، وبعدين تتفرج على حل الدكتور في الفيديو وتكتب النوتس.
+الـ Class Work ملوش Model Answer، لأن حل الدكتور في الفيديو هو الأساس، ومينفعش تقيم نفسك فيه لوحدك.
+الـ Model Answer موجود للواجب (Homework) بس على الميني جروب: بتصحح الواجب منه، ولو في حاجة مش فاهمها بترجع لها في الفيديو. الواجب هو الجزء اللي تقدر تقيم نفسك فيه.
+الدكتور في الـ Class Work بيقول Notes مهمة جدًا، وبيشارك Links وأفكار بتسهّل حفظ الحاجات اللي محتاجة حفظ، والأسئلة أفكارها تقيلة ومستواها عالي، وده اللي محتاج تشوف الدكتور وهو بيفكر فيه ويحله.
+حتى لو حليت السؤال صح، لازم تشوف الحل علشان تعرف: هل فكرت بنفس طريقة الدكتور؟ هل استخدمت الـ Approach الصح؟ هل في طريقة أسرع أو أذكى؟ هل في Note الدكتور ركز عليها وفاتتك؟
+الـ Class Work بتبني فيه طريقة تفكيرك في الأسئلة، خصوصًا الأسئلة الـ High Level.
+الحصة متخلصش من غير الـ Class Work، لازم تشوفه للآخر وتستفيد من كل Note وكل طريقة حل.`;
 
         const ADVICE_GUIDE = `1. مش كاتب نوتس (ومنها Notes Hero or Zero أو النوتس على الأسئلة):
-النوتس دي أهم حاجة في الـ Class Work. الدكتور بيقول فيها ربط وتريكات وأفكار حل، ومش هتلاقيها في الـ Model Answer.
-حتى لو فاهم دلوقتي لازم يكتبها، لأنه لما يرجع يراجع شابتر 1 وهو في شابتر 4 مش هيكون فاكر كل حاجة، والنوتس اللي كتبها بإيده هي اللي هتفكره.
-النوتس بتبقى زي هينتس للأسئلة اللي بعد كده، وبتوفر عليه وقت كبير في المراجعة.
-لو بيكتبها برا في كشكول، يبعت صورته مع الـ Class Work علشان نشوفها.
+النوتس دي أهم حاجة في الـ Class Work. الدكتور بيقول فيها ربط وتريكات وأفكار حل، ومش هتلاقيها غير في حل الدكتور.
+Notes Hero or Zero بتكتبها في الأول علشان تكتسب ترتيب خطوات الحل، فلما تبدأ الأسئلة تبقى عارف تمشي إزاي.
+حتى لو فاهم دلوقتي لازم تكتبها، لأنك لما ترجع تراجع شابتر 1 وانت في شابتر 4 مش هتكون فاكر كل حاجة، والنوتس اللي كتبتها بإيدك هي اللي هتفكرك.
+النوتس بتبقى زي هينتس للأسئلة اللي بعد كده، وبتوفر عليك وقت كبير في المراجعة.
+لو بتكتبها برا في كشكول، ابعت صورته مع الـ Class Work علشان نشوفها.
 
 2. مش كاتب ستيبس، حاطط الإجابة على طول:
-الستيبس هي اللي بتورينا هو بيفكر إزاي، ولو فيه غلط بنعرف هو فين بالظبط.
-في المقالي الدرجة على الخطوات مش على الناتج بس، فاللي متعود يكتب الإجابة على طول بيخسر درجات من غير ما ياخد باله.
+الستيبس هي اللي بتورينا انت بتفكر إزاي، ولو فيه غلط بنعرف هو فين بالظبط.
+في المقالي الدرجة على الخطوات مش على الناتج بس، فلو متعود تكتب الإجابة على طول هتخسر درجات من غير ما تاخد بالك.
 
 3. مكروت أو مشغبط:
 مش مهم كمية اللي اتحل، المهم إزاي اتحل. 5 أسئلة بستيبس كاملة ونوتس أحسن من الـ Class Work كله ناقص.
-الـ Class Work مش امتحان ولا مطلوب يخلصه بسرعة، ده علشان يشغل دماغه ويجرب يفكر.
-الخط المنظم بيساعده هو نفسه وهو بيراجع. لو هو مش عارف يقرا هو كاتب إيه، النوتس مش هتفيده.
-لو هو متأخر ومستعجل يلحق، يقسم الكلاس شيت على كذا يوم بدل ما يحله كله مرة واحدة.
+الـ Class Work مش امتحان ولا مطلوب تخلصه بسرعة، ده علشان تشغل دماغك وتجرب تفكر.
+الخط المنظم بيساعدك انت نفسك وانت بتراجع. لو مش عارف تقرا انت كاتب إيه، النوتس مش هتفيدك.
+لو متأخر ومستعجل تلحق، قسم الكلاس شيت على كذا يوم بدل ما تحله كله مرة واحدة.
 
 4. حل كله صح ومفيش نوتس:
-برافو على الحل، بس يبص هل حل بطريقة الدكتور، وهل فيه طريقة أسرع وأذكى، وهل فاتته Note الدكتور أكد عليها.
-الفرق بين إنه يحل السؤال وإنه يفهمه بجد هو طريقة التفكير.
+برافو على الحل، بس بص هل حليت بطريقة الدكتور، وهل فيه طريقة أسرع وأذكى، وهل فاتتك Note الدكتور أكد عليها.
+الفرق بين إنك تحل السؤال وإنك تفهمه بجد هو طريقة التفكير.
 
 5. فيه غلط كتير:
 الـ Class Work اللي فيه غلط أهم من اللي كله صح، لأن ده اللي هنشتغل عليه.
-يصحح الغلط بلون تاني وينقله في كشكول الغلطات: السؤال، والغلط، وسببه، والحل الصح. ويرجعله قبل كل كويز وقبل الشامل.
-الغلطة اللي صححها بنفسه بيفتكرها أكتر من السؤال اللي حله صح من أول مرة.
+صحح الغلط بلون تاني وانقله في كشكول الغلطات: السؤال، والغلط، وسببه، والحل الصح. وارجعله قبل كل كويز وقبل الشامل.
+الغلطة اللي بتصححها بنفسك بتفتكرها أكتر من السؤال اللي حليته صح من أول مرة.
 
 6. حل كله وبعدين شاف الحل:
-الطريقة الصح سؤال بسؤال: يقرا ويفكر ويكتب حله، وبعدين يشوف حل الدكتور ويكتب النوتة.
-لو حل الكل وبعدين صحح، الـ Class Work هيتحول لتقييم وضغط. الطريقة دي تنفع في الهوم ورك بس.
+الطريقة الصح سؤال بسؤال: تقرا وتفكر وتكتب حلك، وبعدين تشوف حل الدكتور وتكتب النوتة.
+لو حليت الكل وبعدين صححت، الـ Class Work هيتحول لتقييم وضغط. الطريقة دي تنفع في الواجب بس.
 
 7. مبيتفرجش على حل الدكتور:
 حل الدكتور جزء من الحصة لازم يتشاف للآخر، والحصة متخلصش من غيره.
-يفتح فيديو الحل بعد ما يجرب ويقارن تفكيره بتفكير الدكتور.
+افتح فيديو الحل بعد ما تجرب وقارن تفكيرك بتفكير الدكتور.
 
-8. ناقل من الـ Model Answer:
-الـ Model Answer مبيعوضش الـ Class Work، لأنه بيقول الإجابة بس مش بيقول اتوصل لها إزاي.
-يجرب لوحده الأول حتى لو كله طلع غلط، وبعدين يصحح.
+8. ناقل الحل من غير ما يجرب:
+في الـ Class Work: لو نقلت حل الدكتور من الفيديو من غير ما تجرب، هتاخد الإجابة بس مش طريقة الوصول لها. جرب لوحدك الأول حتى لو طلع غلط، وبعدين اتفرج على الحل وصحح.
+في الواجب: الـ Model Answer اللي على الميني جروب للتصحيح بعد ما تحل، مش للنقل منه. حل الأول وبعدين صحح منه، واللي مش فاهمه ارجعله في الفيديو.
 
 9. مشكلة في شكل الـ PDF:
-الصفحات مترتبة بالترتيب، والاسم التلاتي والكود على أول صفحة بس.
-يستخدم CamScanner أو موقع iLovePDF لو الموبايل مفهوش مساحة.
+الصفحات تكون مترتبة بالترتيب، والاسم التلاتي والكود على أول صفحة بس.
+استخدم CamScanner أو موقع iLovePDF لو الموبايل مفهوش مساحة.
 
 10. سؤال مش فاهمه:
-يبعته على الميني جروب والتيم العلمي بيرد عليه.`;
+ابعته على الميني جروب والتيم العلمي هيرد عليك.`;
 
         const BANNED_WORDS = [
             'وحش', 'بشع', 'فظيع', 'كارثة', 'مصيبة', 'زفت', 'زبالة', 'خرابيط', 'متخربط', 'مخربط',
@@ -169,8 +179,14 @@
             'واجب', 'model', 'موديل', 'فيديو', 'دكتور', 'غلط', 'صح', 'ريفيجن', 'revision', 'مبعوت', 'كامل'
         ];
 
+        const STOP_WORDS = new Set([
+            'مش', 'انت', 'انتي', 'في', 'على', 'علي', 'من', 'عن', 'بس', 'كل', 'كله', 'كمان', 'هو', 'هي',
+            'اللي', 'ده', 'دي', 'مع', 'او', 'لو', 'ما', 'لا', 'كاتب', 'كاتبه', 'محتاج', 'محتاجه', 'الطالب'
+        ]);
+
         const el = (id) => document.getElementById(id);
         const inputTextarea = el('inputText');
+        const inputStatus = el('inputStatus');
         const rephraseButton = el('rephraseButton');
         const rephrasedOutput = el('rephrased-output');
         const rephrasedText = el('rephrased-text');
@@ -183,24 +199,28 @@
         const saveExampleButton = el('saveExampleButton');
         const teachStatus = el('teachStatus');
         const exampleCount = el('exampleCount');
+        const ruleCount = el('ruleCount');
+        const ruleList = el('ruleList');
         const exportButton = el('exportButton');
         const importInput = el('importInput');
 
+        let lastFeedback = '';
+        let lastGenerated = '';
+
         // ---------- Storage ----------
 
-        function loadExamples() {
+        function readList(key) {
             try {
-                const raw = localStorage.getItem(STORAGE_KEY);
-                const parsed = raw ? JSON.parse(raw) : [];
-                return Array.isArray(parsed) ? parsed.filter(isValidExample) : [];
+                const parsed = JSON.parse(localStorage.getItem(key) || '[]');
+                return Array.isArray(parsed) ? parsed : [];
             } catch (e) {
                 return [];
             }
         }
 
-        function saveExamples(examples) {
+        function writeList(key, list) {
             try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(examples));
+                localStorage.setItem(key, JSON.stringify(list));
                 return true;
             } catch (e) {
                 return false;
@@ -212,7 +232,37 @@
                 && item.input.trim() && item.expected.trim();
         }
 
-        // ---------- Text similarity ----------
+        function isValidRule(item) {
+            return item && typeof item.text === 'string' && item.text.trim()
+                && (item.source === 'note' || item.source === 'correction');
+        }
+
+        const loadExamples = () => readList(EXAMPLES_KEY).filter(isValidExample);
+        const saveExamples = (list) => writeList(EXAMPLES_KEY, list);
+        const loadRules = () => readList(RULES_KEY).filter(isValidRule);
+        const saveRules = (list) => writeList(RULES_KEY, list);
+
+        // Adds rules that are not already stored; learned rules are capped, team notes never expire.
+        function addRules(texts, source) {
+            const rules = loadRules();
+            const known = new Set(rules.map((r) => normalizeArabic(r.text)));
+            let added = 0;
+
+            texts.map((t) => t.trim()).filter(Boolean).forEach((text) => {
+                const key = normalizeArabic(text);
+                if (!key || known.has(key)) return;
+                known.add(key);
+                rules.unshift({ text, source, createdAt: new Date().toISOString() });
+                added += 1;
+            });
+
+            const notes = rules.filter((r) => r.source === 'note');
+            const learned = rules.filter((r) => r.source === 'correction').slice(0, MAX_LEARNED_RULES);
+            saveRules([...notes, ...learned]);
+            return added;
+        }
+
+        // ---------- Text helpers ----------
 
         function normalizeArabic(text) {
             return text
@@ -229,6 +279,23 @@
 
         function tokenize(text) {
             return new Set(normalizeArabic(text).split(' ').filter((t) => t.length > 1));
+        }
+
+        function keywords(text) {
+            return [...tokenize(text)].filter((t) => t.length > 2 && !STOP_WORDS.has(t));
+        }
+
+        // Anything written between parentheses is an instruction to the model, not part of the feedback.
+        function splitInstructions(text) {
+            const instructions = [];
+            const feedback = text
+                .replace(/[(（]([^()（）]*)[)）]/g, (_, inner) => {
+                    if (inner.trim()) instructions.push(inner.trim());
+                    return ' ';
+                })
+                .replace(/\s+/g, ' ')
+                .trim();
+            return { feedback, instructions };
         }
 
         function similarity(a, b) {
@@ -257,22 +324,47 @@
 
             const picked = ranked.slice(0, MAX_PROMPT_EXAMPLES).map((r) => r.ex);
 
-            // Keep the newest saved example in context so recent corrections take effect quickly.
+            // Keep the newest correction in context so it takes effect immediately.
             if (saved.length && !picked.includes(saved[0])) {
                 picked[picked.length - 1] = saved[0];
             }
             return picked;
         }
 
-        // ---------- Prompt ----------
+        // ---------- Prompts ----------
+
+        function formatExample(ex, index) {
+            const lines = [`مثال ${index + 1}:`, `الملاحظة: ${ex.input.trim()}`];
+            if (ex.generated && ex.generated.trim()) {
+                lines.push(`رسالة اتكتبت قبل كده وكان فيها أخطاء (متكررهاش): ${ex.generated.trim()}`);
+                lines.push(`نفس الرسالة بعد تصحيح فريق المتابعة (ده الصح): ${ex.expected.trim()}`);
+            } else {
+                lines.push(`الرسالة المعتمدة: ${ex.expected.trim()}`);
+            }
+            return lines.join('\n');
+        }
+
+        function formatRules() {
+            const rules = loadRules();
+            const notes = rules.filter((r) => r.source === 'note').map((r) => `• ${r.text}`);
+            const learned = rules.filter((r) => r.source === 'correction').map((r) => `• ${r.text}`);
+            const blocks = [];
+
+            if (notes.length) {
+                blocks.push(`تعليمات دائمة من فريق المتابعة (أولويتها أعلى من أي قاعدة تانية، ولازم تلتزم بيها في كل رسالة):\n${notes.join('\n')}`);
+            }
+            if (learned.length) {
+                blocks.push(`دروس اتعلمتها من تصحيحات الفريق لرسايل قبل كده (متكررش نفس الأخطاء):\n${learned.join('\n')}`);
+            }
+            return blocks.join('\n\n');
+        }
 
         function buildPrompt(feedback, examples, correction) {
-            const examplesBlock = examples
-                .map((ex, i) => `مثال ${i + 1}:\nالملاحظة: ${ex.input.trim()}\nالرسالة المعتمدة: ${ex.expected.trim()}`)
-                .join('\n\n');
+            const examplesBlock = examples.map(formatExample).join('\n\n');
+            const rulesBlock = formatRules();
 
-            return `أنت عضو في فريق متابعة مادة الكيمياء لطلاب الثانوية العامة. بتاخد ملاحظة سريعة مكتوبة على الـ Class Work بتاع طالب أو طالبة (غالباً مختصرة وفيها أخطاء إملائية) وبتحولها لرسالة فيدباك موجهة للطالب مباشرة بالعامية المصرية.
-
+            return `أنت عضو في فريق متابعة مادة الكيمياء لطلاب الثانوية العامة. بتاخد ملاحظة سريعة مكتوبة على الـ Class Work بتاع طالب أو طالبة (غالباً مختصرة وفيها أخطاء إملائية) وبتحولها لرسالة فيدباك بالعامية المصرية بتكلم الطالب نفسه مباشرة.
+${rulesBlock ? `\n${rulesBlock}\n` : ''}
 طريقة الشغل (اعملها جوه حقل points قبل ما تكتب الرسالة):
 1. افهم الملاحظة وصحح أخطاءها الإملائية في دماغك. مثلاً: "نوتش هيرو اور زيرو" = Notes Hero or Zero، "تلمقالي" = "والمقالي"، "الاسءله" = "الأسئلة".
 2. قسّم الملاحظة لنقط منفصلة، وحدد نوع كل نقطة: positive (حاجة اتعملت صح) أو needs_work (حاجة محتاجة تتحسن). الجملة الواحدة ممكن يطلع منها نقطتين، زي "بتحلي مع الدكتور برافو بس مش كاتب نوتس" = نقطة positive ونقطة needs_work.
@@ -282,24 +374,25 @@
 1. كل نقطة في الملاحظة لازم تظهر في الرسالة بنفس معناها بالظبط، من غير ما تحذف نقطة أو تدمج نقطتين لحد ما واحدة تضيع، ومن غير ما تضيف مشكلة أو مدح مش موجودين. لو في رقم أو كمية (زي "سؤالين تلاتة") وضّحه.
 2. المدح للنقط الـ positive بس، ويكون مدح محدد للحاجة نفسها. ممنوع تقول "كملي كده" أو "استمر" أو تمدح بعد نقطة needs_work مباشرة كأنها حاجة كويسة.
 3. أهم قاعدة: ممنوع تتجاهل أي نقطة needs_work أو تكتفي بالمدح. بعد التشجيع مباشرة لازم تقول كل نقطة needs_work بالاسم (مثلاً "بس محتاج تكتب Notes Hero or Zero")، وبعدها على طول نصيحة حقيقية من 2 لـ 3 جمل فيها:
-   أ. يعمل إيه بالظبط، وإمتى، وإزاي (خطوة عملية يقدر ينفذها في الـ Class Work الجاي).
-   ب. ليه ده هيفرق معاه فعلاً (في الفهم، في حل الأسئلة الصعبة، في الـ Revision، أو في الامتحان).
+   أ. تعمل إيه بالظبط، وإمتى، وإزاي (خطوة عملية تقدر تنفذها في الـ Class Work الجاي).
+   ب. ليه ده هيفرق معاك فعلاً (في الفهم، في حل الأسئلة الصعبة، في الـ Revision، أو في الامتحان).
    ممنوع النصيحة تبقى جملة عامة زي "لأنها مهمة جدًا" أو "حاول تركز أكتر" من غير تفاصيل. استخدم دليل النصايح تحت (ده كلام فريق المتابعة نفسه) كأساس، وصيغه بكلامك وعلى حسب تفاصيل الملاحظة. اكتب النصيحة في حقل advice للنقطة، ولازم نفس النصيحة تظهر كاملة جوه الرسالة.
-4. حافظ على المصطلحات واكتبها بالشكل المعتمد: Class Work، Notes، Notes Hero or Zero، Model Answer، Revision، Approach، المقالي، الاختياري، الواجب. ممنوع تبدلها بكلمة عامة زي "الشغل" أو "المذاكرة"، وممنوع تذكر جزء مش مذكور في الملاحظة. "Class Work" دايماً مفرد.
-5. ممنوع أي حكم سلبي على الطالب أو شغله (وحش، مهمل، كسلان، عشوائي، مبهدل، مش مرتب...)، حتى لو مكتوب في الملاحظة. حوّله لوصف للي محتاج يتعمل.
-6. ابدأ على طول من غير ترحيب. لو في نقطة positive ابدأ بمدحها تحديداً. لو مفيش ولا نقطة positive، متمدحش حاجة مش موجودة، وابدأ بتقدير اهتمامه إنه بعت الـ Class Work.
-7. الترتيب: أول رد على مجهوده والنقط الـ positive قبل أي غلط، بعدين النقط اللي محتاجة تتحسن ومعاها النصيحة وسببها. كل نقطة needs_work لازم تتذكر، لكن النصيحة المفصلة تكون لأهم نقطة أو اتنين بس، والباقي يتقال باختصار، علشان الطالب ميحسش إن كل حاجة غلط. اقفل بالحاجة اللي هنستناها منه في الـ Class Work الجاي، زي "مستنيين النوتس المرة الجاية"، ومعاها جملة ثقة بضمير "إحنا" لو مناسب. نوّع صياغة البداية والختام كل مرة.
-8. الكلام موجه للطالب بضمير المخاطب وبالنوع الصح، حتى لو الملاحظة مكتوبة بصيغة الغائب.
-9. فقرة واحدة (أو اتنين بالكتير) متصلة، من غير شرطة (-) أو ترقيم أو عناوين أو كل جملة في سطر.
-10. نبرة دافية وبسيطة: مسموح "برافو عليك/عليكي" و"يا شاطر/يا شاطرة" و ❤️ مرة أو مرتين بالكتير. خد من الأمثلة المعتمدة الأسلوب، لكن جزء النصيحة ممكن يبقى أطول منها عشان يبقى كافي، من غير رغي زيادة.
+4. حافظ على المصطلحات واكتبها بالشكل المعتمد: Class Work، Notes، Notes Hero or Zero، Revision، Approach، المقالي، الاختياري، الواجب. ممنوع تبدلها بكلمة عامة زي "الشغل" أو "المذاكرة"، وممنوع تذكر جزء مش مذكور في الملاحظة. "Class Work" دايماً مفرد.
+5. الـ Class Work ملوش Model Answer: الطالب بيقرا السؤال ويفكر فيه، وبعدين يشوف حل الدكتور في الفيديو ويكتب النوتس. ممنوع تذكر الـ Model Answer أو تنصح بيه في أي كلام عن الـ Class Work. الـ Model Answer للواجب بس، ويتذكر بس لو الملاحظة بتتكلم عن الواجب.
+6. ممنوع أي حكم سلبي على الطالب أو شغله (وحش، مهمل، كسلان، عشوائي، مبهدل، مش مرتب...)، حتى لو مكتوب في الملاحظة. حوّله لوصف للي محتاج يتعمل.
+7. ابدأ على طول من غير ترحيب. لو في نقطة positive ابدأ بمدحها تحديداً. لو مفيش ولا نقطة positive، متمدحش حاجة مش موجودة، وابدأ بتقدير اهتمامك إنه بعت الـ Class Work.
+8. الترتيب: أول رد على مجهوده والنقط الـ positive قبل أي غلط، بعدين النقط اللي محتاجة تتحسن ومعاها النصيحة وسببها. كل نقطة needs_work لازم تتذكر، لكن النصيحة المفصلة تكون لأهم نقطة أو اتنين بس، والباقي يتقال باختصار، علشان الطالب ميحسش إن كل حاجة غلط. اقفل بالحاجة اللي هنستناها منه في الـ Class Work الجاي، زي "مستنيين النوتس المرة الجاية"، ومعاها جملة ثقة بضمير "إحنا" لو مناسب. نوّع صياغة البداية والختام كل مرة.
+9. الرسالة كلها كلام موجه للطالب نفسه بضمير المخاطب (انت/انتي) وبالنوع الصح، من أول كلمة لآخر كلمة. ممنوع تتكلم عنه بصيغة الغائب، يعني ممنوع "الطالب" أو "هو بيحل" أو "هي كاتبة". دليل النصايح مكتوب بالمخاطب المذكر، فحوّله للنوع الصح.
+10. فقرة واحدة (أو اتنين بالكتير) متصلة، من غير شرطة (-) أو ترقيم أو عناوين أو كل جملة في سطر.
+11. نبرة دافية وبسيطة: مسموح "برافو عليك/عليكي" و"يا شاطر/يا شاطرة" و ❤️ مرة أو مرتين بالكتير. خد من الأمثلة المعتمدة الأسلوب، لكن جزء النصيحة ممكن يبقى أطول منها عشان يبقى كافي، من غير رغي زيادة.
 
-الأمثلة المعتمدة (دي كاتبها فريق المتابعة نفسه، قلّد أسلوبها وطولها وترتيبها ومصطلحاتها، لكن متنسخش جملها لو الملاحظة مختلفة):
+الأمثلة (كاتبها أو مصححها فريق المتابعة نفسه. لما يكون في رسالة فيها أخطاء وتصحيحها، افهم إيه اللي اتغير وليه، وطبّق ده على أي رسالة جاية. قلّد الأسلوب، ومتنسخش الجمل لو الملاحظة مختلفة):
 ${examplesBlock}
 
-دليل النصايح (لكل مشكلة متكررة: يعمل إيه وليه):
+دليل النصايح (لكل مشكلة متكررة: تعمل إيه وليه):
 ${ADVICE_GUIDE}
 
-المرجع (أفكار عن أهمية الـ Class Work، استخدم منها فكرة لما تكون مرتبطة بنقطة needs_work):
+المرجع (نظام الـ Class Work وأهميته، استخدم منه فكرة لما تكون مرتبطة بنقطة needs_work):
 ${CLASSWORK_GUIDE}
 ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المشكلة دي: ${correction}. اكتب الرسالة تاني وتجنبها.\n` : ''}
 رجّع JSON بس بالشكل ده من غير أي كلام تاني:
@@ -308,47 +401,71 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
 الملاحظة: ${feedback}`;
         }
 
-        // ---------- Model call ----------
+        function buildLessonPrompt(feedback, generated, corrected) {
+            return `أنت بتراجع رسايل فيدباك لطلاب الكيمياء (ثانوية عامة) بيكتبها موديل AI. فريق المتابعة صحح رسالة كتبها الموديل.
 
-        const STOP_WORDS = new Set([
-            'مش', 'انت', 'انتي', 'في', 'على', 'علي', 'من', 'عن', 'بس', 'كل', 'كله', 'كمان', 'هو', 'هي',
-            'اللي', 'ده', 'دي', 'مع', 'او', 'لو', 'ما', 'لا', 'كاتب', 'كاتبه', 'محتاج', 'محتاجه', 'الطالب'
-        ]);
+الملاحظة الأصلية: ${feedback}
+الرسالة اللي كتبها الموديل: ${generated}
+الرسالة بعد تصحيح الفريق: ${corrected}
 
-        // Returns null when the response is missing or was cut off mid-generation.
-        function parseResponse(rawText) {
-            const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+قارن الرسالتين وطلّع من 1 لـ 3 قواعد عامة تمنع الموديل يكرر نفس الأخطاء في أي رسالة جاية. كل قاعدة جملة واحدة واضحة بالعامية المصرية بتقول يعمل إيه أو ميعملش إيه. القاعدة تكون عامة ومش خاصة بالطالب ده أو بالملاحظة دي بالذات. لو الفرق مجرد إعادة صياغة من غير معنى جديد، رجّع لستة فاضية.
+
+رجّع JSON بس بالشكل ده:
+{"lessons": ["القاعدة الأولى", "القاعدة التانية"]}`;
+        }
+
+        // ---------- Response parsing and checks ----------
+
+        function stripFences(rawText) {
+            return rawText.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+        }
+
+        function parseJson(rawText) {
+            const cleaned = stripFences(rawText);
             const candidates = [cleaned, (cleaned.match(/\{[\s\S]*\}/) || [])[0]].filter(Boolean);
-
             for (const candidate of candidates) {
                 try {
-                    const data = JSON.parse(candidate);
-                    if (data && typeof data.message === 'string' && data.message.trim()) {
-                        return {
-                            message: data.message.trim(),
-                            points: Array.isArray(data.points) ? data.points : []
-                        };
-                    }
+                    return JSON.parse(candidate);
                 } catch (e) {
                     // Fall through to the next candidate.
                 }
             }
+            return null;
+        }
 
+        // Returns null when the response is missing or was cut off mid-generation.
+        function parseMessage(rawText) {
+            const data = parseJson(rawText);
+            if (data && typeof data.message === 'string' && data.message.trim()) {
+                return { message: data.message.trim(), points: Array.isArray(data.points) ? data.points : [] };
+            }
+            const cleaned = stripFences(rawText);
             if (!cleaned || cleaned.startsWith('{')) return null;
             return { message: cleaned, points: [] };
         }
 
-        function keywords(text) {
-            return [...tokenize(text)].filter((t) => t.length > 2 && !STOP_WORDS.has(t));
+        function parseLessons(rawText) {
+            const data = parseJson(rawText);
+            if (!data || !Array.isArray(data.lessons)) return null;
+            return data.lessons.filter((l) => typeof l === 'string' && l.trim()).slice(0, 3);
         }
 
-        function findIssue(message, points = []) {
+        function findIssue(message, points, feedback) {
             if (/^\s*[-•*]/m.test(message)) return 'في سطر بادئ بشرطة أو نقطة';
             if (/كلاسوركات|class works/i.test(message)) return 'كلمة Class Work اتجمعت';
 
             const normalized = normalizeArabic(message);
             const hit = BANNED_WORDS.find((w) => normalized.includes(normalizeArabic(w)));
             if (hit) return `استخدمت كلمة فيها حكم سلبي ("${hit}")`;
+
+            if (/(^| )(الطالب|الطالبه|للطالب|للطالبه)( |$)/.test(normalized)) {
+                return 'الرسالة بتتكلم عن الطالب بصيغة الغائب بدل ما تكلمه هو مباشرة';
+            }
+
+            const aboutHomework = /(واجب|هوم ?ورك|homework)/i.test(normalizeArabic(feedback));
+            if (!aboutHomework && /(model answer|موديل ا?نسر)/i.test(normalized)) {
+                return 'ذكرت الـ Model Answer، والـ Class Work ملوش Model Answer';
+            }
 
             const pending = points.filter((p) => p && p.type === 'needs_work' && typeof p.text === 'string');
             for (const point of pending) {
@@ -362,12 +479,14 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
             }
             const wordCount = (text) => normalizeArabic(text || '').split(' ').filter(Boolean).length;
             if (pending.length && !pending.some((p) => wordCount(p.advice) >= 15)) {
-                return 'النصيحة قصيرة وعامة، لازم أهم نقطة يتقال فيها يعمل إيه بالظبط وإزاي وليه ده هيفرق معاه';
+                return 'النصيحة قصيرة وعامة، لازم أهم نقطة يتقال فيها تعمل إيه بالظبط وإزاي وليه ده هيفرق معاك';
             }
             return '';
         }
 
-        async function callModel(model, prompt) {
+        // ---------- Model calls ----------
+
+        async function callModel(model, prompt, temperature) {
             const response = await fetch(WORKER_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -375,7 +494,7 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
                     model,
                     contents: [{ role: 'user', parts: [{ text: prompt }] }],
                     generationConfig: {
-                        temperature: 0.8,
+                        temperature,
                         topP: 0.95,
                         maxOutputTokens: 4096,
                         responseMimeType: 'application/json'
@@ -389,46 +508,45 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
 
             const result = await response.json();
             const candidate = result?.candidates?.[0];
-            const text = candidate?.content?.parts
-                ?.filter((p) => !p.thought)
-                .map((p) => p.text || '')
-                .join('') || '';
-
             if (candidate?.finishReason === 'MAX_TOKENS') {
                 throw new Error(`${model} response was truncated`);
             }
 
-            const parsed = parseResponse(text);
-            if (!parsed) {
-                throw new Error(`${model} returned an empty or incomplete response`);
-            }
-            return parsed;
+            return candidate?.content?.parts
+                ?.filter((p) => !p.thought)
+                .map((p) => p.text || '')
+                .join('') || '';
         }
 
-        // Walks the model list from `startIndex` until one answers.
-        async function requestMessage(prompt, startIndex = 0) {
+        // Walks the model list from `startIndex` until one returns a parseable answer.
+        async function requestWithFallback(prompt, parse, { startIndex = 0, temperature = 0.8 } = {}) {
             let lastError;
             for (let i = startIndex; i < MODELS.length; i += 1) {
                 try {
-                    const { message, points } = await callModel(MODELS[i], prompt);
-                    return { message, points, modelIndex: i };
+                    const parsed = parse(await callModel(MODELS[i], prompt, temperature));
+                    if (parsed) return { ...parsed, modelIndex: i };
+                    lastError = new Error(`${MODELS[i]} returned an empty or incomplete response`);
                 } catch (e) {
                     lastError = e;
-                    console.warn(e.message);
                 }
+                console.warn(lastError.message);
             }
             throw lastError || new Error('No model available');
         }
 
         async function generate(feedback) {
             const examples = pickExamples(feedback);
-            let result = await requestMessage(buildPrompt(feedback, examples));
+            let result = await requestWithFallback(buildPrompt(feedback, examples), parseMessage);
 
-            let issue = findIssue(result.message, result.points);
+            let issue = findIssue(result.message, result.points, feedback);
             for (let attempt = 0; issue && attempt < 2; attempt += 1) {
                 try {
-                    const retry = await requestMessage(buildPrompt(feedback, examples, issue), result.modelIndex);
-                    const retryIssue = findIssue(retry.message, retry.points);
+                    const retry = await requestWithFallback(
+                        buildPrompt(feedback, examples, issue),
+                        parseMessage,
+                        { startIndex: result.modelIndex }
+                    );
+                    const retryIssue = findIssue(retry.message, retry.points, feedback);
                     if (!retryIssue) {
                         result = retry;
                         break;
@@ -441,6 +559,18 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
             return result.message;
         }
 
+        async function learnFromCorrection(feedback, generated, corrected) {
+            const { lessons } = await requestWithFallback(
+                buildLessonPrompt(feedback, generated, corrected),
+                (text) => {
+                    const parsed = parseLessons(text);
+                    return parsed ? { lessons: parsed } : null;
+                },
+                { temperature: 0.2 }
+            );
+            return addRules(lessons, 'correction');
+        }
+
         // ---------- UI helpers ----------
 
         function showError(text) {
@@ -448,26 +578,64 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
             errorText.textContent = text;
         }
 
-        function flashStatus(text) {
-            teachStatus.textContent = text;
+        function flash(target, text, duration = 3000) {
+            target.textContent = text;
             setTimeout(() => {
-                if (teachStatus.textContent === text) teachStatus.textContent = '';
-            }, 2500);
+                if (target.textContent === text) target.textContent = '';
+            }, duration);
         }
 
-        function refreshExampleCount() {
+        function renderCounts() {
             exampleCount.textContent = loadExamples().length;
+            renderRules();
+        }
+
+        function renderRules() {
+            const rules = loadRules();
+            ruleCount.textContent = rules.length;
+            ruleList.innerHTML = '';
+
+            if (!rules.length) {
+                const empty = document.createElement('li');
+                empty.className = 'text-blue-400';
+                empty.textContent = 'No rules yet.';
+                ruleList.appendChild(empty);
+                return;
+            }
+
+            rules.forEach((rule, index) => {
+                const item = document.createElement('li');
+                item.className = 'flex items-start justify-between gap-2 p-2 bg-white border border-blue-100 rounded';
+
+                const text = document.createElement('span');
+                text.className = 'text-blue-900 leading-relaxed';
+                text.textContent = rule.text;
+
+                const tag = document.createElement('span');
+                tag.className = 'shrink-0 text-xs text-blue-400';
+                tag.textContent = rule.source === 'note' ? 'note' : 'learned';
+
+                const remove = document.createElement('button');
+                remove.className = 'shrink-0 text-red-500 hover:text-red-700';
+                remove.textContent = '×';
+                remove.setAttribute('aria-label', 'Delete rule');
+                remove.addEventListener('click', () => {
+                    const current = loadRules();
+                    current.splice(index, 1);
+                    saveRules(current);
+                    renderRules();
+                });
+
+                item.append(text, tag, remove);
+                ruleList.appendChild(item);
+            });
         }
 
         function setTeachMode(enabled) {
             teachToggle.checked = enabled;
             teachPanel.classList.toggle('hidden', !enabled);
             try { localStorage.setItem(TEACH_KEY, enabled ? '1' : '0'); } catch (e) { /* ignore */ }
-
-            if (enabled) {
-                if (!expectedText.value.trim()) expectedText.value = rephrasedText.textContent.trim();
-                refreshExampleCount();
-            }
+            if (enabled) renderCounts();
         }
 
         // ---------- Events ----------
@@ -483,11 +651,20 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
         });
 
         rephraseButton.addEventListener('click', async () => {
-            const feedback = inputTextarea.value.trim();
+            const { feedback, instructions } = splitInstructions(inputTextarea.value.trim());
+
+            if (instructions.length) {
+                const added = addRules(instructions, 'note');
+                inputTextarea.value = feedback;
+                renderRules();
+                flash(inputStatus, added ? 'Rule saved. The model will always follow it.' : 'This rule is already saved.');
+            }
 
             if (!feedback) {
-                showError('Please write the original feedback.');
-                rephrasedOutput.classList.add('hidden');
+                if (!instructions.length) {
+                    showError('Please write the original feedback.');
+                    rephrasedOutput.classList.add('hidden');
+                }
                 return;
             }
 
@@ -498,6 +675,8 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
 
             try {
                 const message = await generate(feedback);
+                lastFeedback = feedback;
+                lastGenerated = message;
                 rephrasedText.textContent = message;
                 expectedText.value = message;
                 rephrasedOutput.classList.remove('hidden');
@@ -513,33 +692,54 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
 
         teachToggle.addEventListener('change', () => setTeachMode(teachToggle.checked));
 
-        saveExampleButton.addEventListener('click', () => {
-            const input = inputTextarea.value.trim();
-            const expected = expectedText.value.trim();
+        saveExampleButton.addEventListener('click', async () => {
+            const corrected = expectedText.value.trim();
 
-            if (!input || !expected) {
-                flashStatus('Feedback and message are both required.');
+            if (!lastFeedback || !lastGenerated) {
+                flash(teachStatus, 'Generate a message first.');
+                return;
+            }
+            if (!corrected || normalizeArabic(corrected) === normalizeArabic(lastGenerated)) {
+                flash(teachStatus, 'Edit the message first, then save.');
                 return;
             }
 
-            const key = normalizeArabic(input);
+            const key = normalizeArabic(lastFeedback);
             const examples = loadExamples().filter((ex) => normalizeArabic(ex.input) !== key);
-            examples.unshift({ input, expected, createdAt: new Date().toISOString() });
+            examples.unshift({
+                input: lastFeedback,
+                generated: lastGenerated,
+                expected: corrected,
+                createdAt: new Date().toISOString()
+            });
 
-            if (saveExamples(examples)) {
-                refreshExampleCount();
-                flashStatus('Saved');
-            } else {
-                flashStatus('Browser storage is unavailable.');
+            if (!saveExamples(examples)) {
+                flash(teachStatus, 'Browser storage is unavailable.');
+                return;
+            }
+
+            renderCounts();
+            saveExampleButton.disabled = true;
+            teachStatus.textContent = 'Learning from your edit...';
+
+            try {
+                const added = await learnFromCorrection(lastFeedback, lastGenerated, corrected);
+                renderRules();
+                flash(teachStatus, added ? `Saved. Learned ${added} new rule${added === 1 ? '' : 's'}.` : 'Saved.');
+            } catch (e) {
+                flash(teachStatus, 'Saved. Rule extraction failed, the correction is still used.');
+            } finally {
+                saveExampleButton.disabled = false;
             }
         });
 
         exportButton.addEventListener('click', () => {
-            const blob = new Blob([JSON.stringify(loadExamples(), null, 2)], { type: 'application/json' });
+            const data = { examples: loadExamples(), rules: loadRules() };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `feedback-examples-${new Date().toISOString().slice(0, 10)}.json`;
+            link.download = `feedback-memory-${new Date().toISOString().slice(0, 10)}.json`;
             link.click();
             URL.revokeObjectURL(url);
         });
@@ -551,29 +751,27 @@ ${correction ? `\nتنبيه: محاولة سابقة طلعت فيها المش
 
             try {
                 const incoming = JSON.parse(await file.text());
-                if (!Array.isArray(incoming)) throw new Error('Invalid format');
+                const incomingExamples = Array.isArray(incoming) ? incoming : incoming.examples || [];
+                const incomingRules = Array.isArray(incoming) ? [] : incoming.rules || [];
 
                 const merged = loadExamples();
                 const known = new Set(merged.map((ex) => normalizeArabic(ex.input)));
-                let added = 0;
-
-                incoming.filter(isValidExample).forEach((ex) => {
+                incomingExamples.filter(isValidExample).forEach((ex) => {
                     const key = normalizeArabic(ex.input);
                     if (known.has(key)) return;
                     known.add(key);
-                    merged.push({
-                        input: ex.input.trim(),
-                        expected: ex.expected.trim(),
-                        createdAt: ex.createdAt || new Date().toISOString()
-                    });
-                    added += 1;
+                    merged.push(ex);
                 });
-
                 saveExamples(merged);
-                refreshExampleCount();
-                flashStatus(`Imported ${added}`);
+
+                const validRules = incomingRules.filter(isValidRule);
+                addRules(validRules.filter((r) => r.source === 'note').map((r) => r.text), 'note');
+                addRules(validRules.filter((r) => r.source === 'correction').map((r) => r.text), 'correction');
+
+                renderCounts();
+                flash(teachStatus, 'Imported.');
             } catch (e) {
-                flashStatus('Import failed.');
+                flash(teachStatus, 'Import failed.');
             }
         });
 
